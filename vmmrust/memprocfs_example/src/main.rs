@@ -564,6 +564,15 @@ pub fn main_example() -> ResultEx<()> {
         }
 
 
+        // Example: vmmregkey.name_original()
+        // The common '*' class key is exposed as '_' in file-system paths.
+        println!("========================================");
+        println!("vmmregkey.name_original():");
+        if let Ok(regkey) = vmm.reg_key(r"HKLM\SOFTWARE\Classes\_") {
+            println!("{} -> {:?}", regkey.name, regkey.name_original()?);
+        }
+
+
         // Example: vmmregkey.parent()
         println!("========================================");
         println!("vmmregkey.parent():");
@@ -603,6 +612,15 @@ pub fn main_example() -> ResultEx<()> {
         println!("path: {reg_path}");
         let vmmregvalue = vmm.reg_value(reg_path).unwrap();
         println!("{vmmregvalue} raw_type={} raw_size={}", vmmregvalue.raw_type, vmmregvalue.raw_size);
+
+
+        // Example: vmmregvalue.name_original()
+        // The common '\DosDevices\C:' value is exposed as '_DosDevices_C_'.
+        println!("========================================");
+        println!("vmmregvalue.name_original():");
+        if let Ok(regvalue) = vmm.reg_value(r"HKLM\SYSTEM\MountedDevices\_DosDevices_C_") {
+            println!("{} -> {:?}", regvalue.name, regvalue.name_original()?);
+        }
 
 
         // Example: vmmregvalue.raw_value()

@@ -3071,6 +3071,23 @@ pub struct VmmRegKey<'a> {
 }
 
 impl VmmRegKey<'_> {
+    /// Retrieve the original key name stored in the hive.
+    ///
+    /// Use `path` for lookups; the original name may contain backslashes or
+    /// embedded nulls.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # fn example(vmm : &memprocfs::Vmm<'_>) -> memprocfs::ResultEx<()> {
+    /// let regkey = vmm.reg_key(r"HKLM\SOFTWARE\Classes\_")?;
+    /// println!("{} -> {:?}", regkey.name, regkey.name_original()?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn name_original(&self) -> ResultEx<String> {
+        return self.vmm.impl_reg_name_original(self.path.as_str(), false);
+    }
+
     /// Retrieve the parent registry key of this registry key.
     /// 
     /// # Examples
@@ -3212,6 +3229,23 @@ pub struct VmmRegValue<'a> {
 }
 
 impl VmmRegValue<'_> {
+    /// Retrieve the original value name stored in the hive.
+    ///
+    /// The unnamed value returns an empty string. Use `path` for lookups; the
+    /// original name may contain backslashes or embedded nulls.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # fn example(vmm : &memprocfs::Vmm<'_>) -> memprocfs::ResultEx<()> {
+    /// let regvalue = vmm.reg_value(r"HKLM\SYSTEM\MountedDevices\_DosDevices_C_")?;
+    /// println!("{} -> {:?}", regvalue.name, regvalue.name_original()?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn name_original(&self) -> ResultEx<String> {
+        return self.vmm.impl_reg_name_original(self.path.as_str(), true);
+    }
+
     /// Retrieve the parent registry key.
     /// 
     /// # Examples
@@ -4623,6 +4657,7 @@ struct VmmNative {
     VMMDLL_WinReg_HiveWrite :       extern "C" fn(hVMM : usize, vaCMHive : u64, ra : u32, pb : *const u8, cb : u32) -> bool,
     VMMDLL_WinReg_EnumKeyExU :      extern "C" fn(hVMM : usize, uszFullPathKey : *const c_char, dwIndex : u32, lpcchName : *mut c_char, lpcchName : *mut u32, lpftLastWriteTime : *mut u64) -> bool,
     VMMDLL_WinReg_EnumValueU :      extern "C" fn(hVMM : usize, uszFullPathKey : *const c_char, dwIndex : u32, lpValueName : *mut c_char, lpcchValueName : *mut u32, lpType : *mut u32, lpcbData : *mut u32) -> bool,
+    VMMDLL_WinReg_QueryNameOriginalU : extern "C" fn(hVMM : usize, uszFullPath : *const c_char, fValue : c_int, uszName : *mut c_char, pcbName : *mut u32) -> c_int,
     VMMDLL_WinReg_QueryValueExU :   extern "C" fn(hVMM : usize, uszFullPathKeyValue : *const c_char, lpType : *mut u32, lpData : *mut u8, lpcbData : *mut u32) -> bool,
 
     VMMDLL_ProcessGetModuleBaseU :  extern "C" fn(hVMM : usize, pid : u32, uszModuleName : *const c_char) -> u64,
@@ -4721,6 +4756,7 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
         let VMMDLL_WinReg_HiveWrite = *lib.get(b"VMMDLL_WinReg_HiveWrite")?;
         let VMMDLL_WinReg_EnumKeyExU = *lib.get(b"VMMDLL_WinReg_EnumKeyExU")?;
         let VMMDLL_WinReg_EnumValueU = *lib.get(b"VMMDLL_WinReg_EnumValueU")?;
+        let VMMDLL_WinReg_QueryNameOriginalU = *lib.get(b"VMMDLL_WinReg_QueryNameOriginalU")?;
         let VMMDLL_WinReg_QueryValueExU = *lib.get(b"VMMDLL_WinReg_QueryValueExU")?;
         let VMMDLL_ProcessGetModuleBaseU = *lib.get(b"VMMDLL_ProcessGetModuleBaseU")?;
         let VMMDLL_ProcessGetProcAddressU = *lib.get(b"VMMDLL_ProcessGetProcAddressU")?;
@@ -4818,6 +4854,7 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
             VMMDLL_WinReg_HiveWrite,
             VMMDLL_WinReg_EnumKeyExU,
             VMMDLL_WinReg_EnumValueU,
+            VMMDLL_WinReg_QueryNameOriginalU,
             VMMDLL_WinReg_QueryValueExU,
             VMMDLL_ProcessGetModuleBaseU,
             VMMDLL_ProcessGetProcAddressU,
@@ -6073,6 +6110,23 @@ impl Vmm<'_> {
             }
         }
         return Err(anyhow!("[err]"));
+    }
+
+    fn impl_reg_name_original(&self, path : &str, is_value : bool) -> ResultEx<String> {
+        let c_path = CString::new(path)?;
+        let mut cb = 0;
+        let r = (self.native.VMMDLL_WinReg_QueryNameOriginalU)(self.native.h, c_path.as_ptr(), is_value as c_int, std::ptr::null_mut(), &mut cb);
+        if r == 0 || cb == 0 {
+            return Err(anyhow!("VMMDLL_WinReg_QueryNameOriginalU: fail."));
+        }
+        let mut bytes = vec![0u8; cb as usize];
+        let r = (self.native.VMMDLL_WinReg_QueryNameOriginalU)(self.native.h, c_path.as_ptr(), is_value as c_int, bytes.as_mut_ptr() as *mut c_char, &mut cb);
+        if r == 0 || cb == 0 || cb as usize > bytes.len() || bytes[cb as usize - 1] != 0 {
+            return Err(anyhow!("VMMDLL_WinReg_QueryNameOriginalU: fail."));
+        }
+        // Remove only the final terminator, retaining embedded and trailing nulls.
+        bytes.truncate(cb as usize - 1);
+        return Ok(String::from_utf8(bytes)?);
     }
 
     fn impl_reg_key(&self, path : &str) -> ResultEx<VmmRegKey> {

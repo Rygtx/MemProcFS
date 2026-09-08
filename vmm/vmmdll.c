@@ -3075,6 +3075,47 @@ _Success_(return) BOOL VMMDLL_WinReg_EnumValueW(_In_ VMM_HANDLE H, _In_ LPCWSTR 
     CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_WinReg_EnumValueW, VMMDLL_WinReg_EnumValue_Impl(H, NULL, wszFullPathKey, dwIndex, (PBYTE)lpValueName, *lpcchValueName << 1, lpcchValueName, lpType, lpData, lpcbData))
 }
 
+_Success_(return) BOOL VMMDLL_WinReg_QueryNameOriginalU(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPath, _In_ BOOL fValue, _Out_writes_opt_(*pcbName) LPSTR uszName, _When_(uszName == NULL, _Out_) _When_(uszName != NULL, _Inout_) PDWORD pcbName)
+{
+    if(!pcbName) { return FALSE; }
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_WinReg_QueryNameOriginalU, VmmWinReg_QueryNameOriginal(H, uszFullPath, fValue, (PBYTE)uszName, uszName ? *pcbName : 0, pcbName))
+}
+
+_Success_(return) BOOL VMMDLL_WinReg_QueryNameOriginalW(_In_ VMM_HANDLE H, _In_ LPCWSTR wszFullPath, _In_ BOOL fValue, _Out_writes_opt_(*pcchName) LPWSTR wszName, _When_(wszName == NULL, _Out_) _When_(wszName != NULL, _Inout_) PDWORD pcchName)
+{
+    BOOL f = FALSE;
+    QWORD tm;
+    DWORD cchName, cbuName = 0, cbwName = 0, cbwPart, o;
+    LPSTR uszFullPath, uszName = NULL;
+    PBYTE pbName = NULL;
+    BYTE pbBuffer[2 * MAX_PATH];
+    if(!pcchName) { return FALSE; }
+    cchName = wszName ? *pcchName : 0;
+    *pcchName = 0;
+    if(!wszFullPath || !CharUtil_WtoU(wszFullPath, -1, pbBuffer, sizeof(pbBuffer), &uszFullPath, NULL, 0)) { return FALSE; }
+    if(!VmmDllCore_HandleReserveExternal(H)) { return FALSE; }
+    tm = Statistics_CallStart(H);
+    if(!VmmWinReg_QueryNameOriginal(H, uszFullPath, fValue, NULL, 0, &cbuName)) { goto finish; }
+    if(!(uszName = LocalAlloc(0, cbuName))) { goto finish; }
+    if(!VmmWinReg_QueryNameOriginal(H, uszFullPath, fValue, (PBYTE)uszName, cbuName, &cbuName)) { goto finish; }
+    if(!(pbName = LocalAlloc(0, 2 * cbuName))) { goto finish; }
+    // Convert each null-delimited part to preserve embedded nulls in the name.
+    for(o = 0; o < cbuName; o += (DWORD)strlen(uszName + o) + 1) {
+        if(!CharUtil_UtoW(uszName + o, cbuName - o, pbName + cbwName, 2 * cbuName - cbwName, NULL, &cbwPart, CHARUTIL_FLAG_STR_BUFONLY)) { goto finish; }
+        cbwName += cbwPart;
+    }
+    *pcchName = cbwName / 2;
+    if(wszName && (cchName < *pcchName)) { goto finish; }
+    if(wszName) { memcpy(wszName, pbName, cbwName); }
+    f = TRUE;
+finish:
+    LocalFree(pbName);
+    LocalFree(uszName);
+    Statistics_CallEnd(H, STATISTICS_ID_VMMDLL_WinReg_QueryNameOriginalW, tm);
+    VmmDllCore_HandleReturnExternal(H);
+    return f;
+}
+
 _Success_(return) BOOL VMMDLL_WinReg_QueryValueExU(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPathKeyValue, _Out_opt_ LPDWORD lpType, _Out_writes_opt_(*lpcbData) LPBYTE lpData, _When_(lpData == NULL, _Out_opt_) _When_(lpData != NULL, _Inout_opt_) LPDWORD lpcbData)
 {
     CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_WinReg_QueryValueEx, VmmWinReg_ValueQuery2(H, uszFullPathKeyValue, lpType, lpData, lpcbData ? *lpcbData : 0, lpcbData))

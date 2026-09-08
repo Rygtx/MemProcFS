@@ -364,6 +364,7 @@ PyObj_RegHive* VmmPycRegHive_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ PVMM
 PyObj_RegMemory* VmmPycRegMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ QWORD vaCMHive);
 PyObj_RegKey* VmmPycRegKey_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszFullPathKey, _In_ BOOL fVerify);
 PyObj_RegValue* VmmPycRegValue_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszFullPathKeyValue, _In_ BOOL fVerify);
+_Success_(return != NULL) PyObject* VmmPycReg_NameOriginal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszPath, _In_ BOOL fValue);
 PyObj_Vmm *VmmPycVmm_InitializeInternal2(_In_ PyObj_Vmm *pyVMM, _In_ VMM_HANDLE hVMM);
 PyObj_Search *VmmPycSearch_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ PyObject *args);
 PyObj_Yara *VmmPycYara_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ PyObject *args);

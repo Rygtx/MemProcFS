@@ -217,6 +217,14 @@ VmmPycRegValue_name(PyObj_RegValue *self, void *closure)
 }
 
 // -> STR
+_Success_(return != NULL)
+static PyObject* VmmPycRegValue_name_original(_In_ PyObj_RegValue *self, _In_opt_ void *closure)
+{
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegValue.name_original: Not initialized."); }
+    return VmmPycReg_NameOriginal(self->pyVMM, self->uszPath, TRUE);
+}
+
+// -> STR
 static PyObject*
 VmmPycRegValue_path(PyObj_RegValue *self, void *closure)
 {
@@ -285,7 +293,8 @@ BOOL VmmPycRegValue_InitializeType(PyObject *pModule)
         {NULL}
     };
     static PyGetSetDef PyGetSet[] = {
-        {"name", (getter)VmmPycRegValue_name, (setter)NULL, "Value name.", NULL},
+        {"name", (getter)VmmPycRegValue_name, (setter)NULL, "File-system-safe value name.", NULL},
+        {"name_original", (getter)VmmPycRegValue_name_original, (setter)NULL, "Original value name stored in the hive; empty for the unnamed value.", NULL},
         {"path", (getter)VmmPycRegValue_path, (setter)NULL, "Value path.", NULL},
         {"parent", (getter)VmmPycRegValue_parent, (setter)NULL, "Parent key.", NULL},
         {"size", (getter)VmmPycRegValue_size, (setter)NULL, "Value byte size.", NULL},

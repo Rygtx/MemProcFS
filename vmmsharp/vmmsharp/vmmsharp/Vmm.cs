@@ -1137,6 +1137,36 @@ namespace Vmmsharp
         }
 
         /// <summary>
+        /// Retrieve the original name of a registry key or value stored in the hive.
+        /// Use the file-system-safe path for lookups; original names may contain backslashes or embedded nulls.
+        /// </summary>
+        /// <param name="sFullPath">Existing file-system path, including the value name if isValue is true.</param>
+        /// <param name="isValue">True for a value, false for a key.</param>
+        /// <returns>Original name on success, empty string for the unnamed value, or null on failure.</returns>
+        public unsafe string RegNameOriginal(string sFullPath, bool isValue = false)
+        {
+#if NET5_0_OR_GREATER
+            const int cbChar = 1;
+            Encoding encoding = Encoding.UTF8;
+#else
+            const int cbChar = 2;
+            Encoding encoding = Encoding.Unicode;
+#endif
+            uint cchName = 0;
+            if (string.IsNullOrEmpty(sFullPath) || sFullPath.IndexOf('\0') >= 0) { return null; }
+            if (!Vmmi.VMMDLL_WinReg_QueryNameOriginal(hVMM, sFullPath, isValue, null, ref cchName)) { return null; }
+            if (cchName == 0 || cchName > int.MaxValue / cbChar) { return null; }
+            byte[] data = new byte[(int)cchName * cbChar];
+            fixed (byte* pb = data)
+            {
+                if (!Vmmi.VMMDLL_WinReg_QueryNameOriginal(hVMM, sFullPath, isValue, pb, ref cchName)) { return null; }
+            }
+            if (cchName == 0 || cchName > data.Length / cbChar) { return null; }
+            // Exclude only the final terminator, retaining embedded and trailing nulls.
+            return encoding.GetString(data, 0, ((int)cchName - 1) * cbChar);
+        }
+
+        /// <summary>
         /// Read a registry value.
         /// </summary>
         /// <param name="sValueFullPath"></param>

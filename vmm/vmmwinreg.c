@@ -1243,7 +1243,7 @@ typedef struct tdREG_CM_KEY_NODE {
     DWORD MaxValueNameLen;      // +0x03c MaxValueNameLen : Uint4B
     DWORD MaxValueDataLen;      // +0x040 MaxValueDataLen : Uint4B
     DWORD WorkVar;              // +0x044 WorkVar : Uint4B
-    WORD NameLength;            // +0x048 NameLength : Uint2B
+    WORD NameLength;            // +0x048 NameLength : Uint2B (bytes)
     WORD ClassLength;           // +0x04a ClassLength : Uint2B
     union {
         CHAR szName[1];          // +0x04c Name : [1] Wchar
@@ -1254,7 +1254,7 @@ typedef struct tdREG_CM_KEY_NODE {
 // "vk-key-value"
 typedef struct tdREG_CM_KEY_VALUE {
     WORD Signature;             // 0x000 Signature : Uint2B
-    WORD NameLength;            // 0x002 NameLength : Uint2B
+    WORD NameLength;            // 0x002 NameLength : Uint2B (bytes)
     DWORD DataLength;           // 0x004 DataLength : Uint4B
     DWORD Data;                 // 0x008 Data : Uint4B
     DWORD Type;                 // 0x00c Type : Uint4B
@@ -1326,7 +1326,7 @@ DWORD VmmWinReg_KeyHashName(_In_ PREG_CM_KEY_NODE pnk, _In_ DWORD iSuffix)
     CHAR uszBuffer[2 * MAX_PATH];
     c = (pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) ?
         CharUtil_FixFsName(uszBuffer, sizeof(uszBuffer), NULL, pnk->szName, NULL, pnk->NameLength, iSuffix, TRUE) :
-        CharUtil_FixFsName(uszBuffer, sizeof(uszBuffer), NULL, NULL, pnk->wszName, pnk->NameLength, iSuffix, TRUE);
+        CharUtil_FixFsName(uszBuffer, sizeof(uszBuffer), NULL, NULL, pnk->wszName, pnk->NameLength / 2, iSuffix, TRUE);
     if(c) { c--; }
     for(i = 0; i < c; i++) {
         dwHash = ((dwHash >> 13) | (dwHash << 19)) + (UCHAR)uszBuffer[i];
@@ -1418,7 +1418,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeCreateKey(_In_ VMM_HANDLE H, _In_ POB_RE
 	cbKey = cbCell - 4;
 	pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot._DUAL[iSV].pb + oCellRaw + 4);
     if(pnk->Signature != REG_CM_KEY_SIGNATURE_KEYNODE) { goto fail; }
-	if(((QWORD)pnk->NameLength << ((pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) ? 0 : 1)) > (cbKey - REG_CM_KEY_NODE_SIZEOF)) { goto fail; }
+    if((pnk->NameLength > cbKey - REG_CM_KEY_NODE_SIZEOF) || (!(pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) && (pnk->NameLength & 1))) { goto fail; }
     if(pnk->Parent == oCell) { goto fail; }
 	// 3: get parent key
 	pObKeyParent = ObMap_GetByKey(pHive->Snapshot.pmKeyOffset, pnk->Parent);
@@ -1495,7 +1495,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeRootKeyDummy(_In_ VMM_HANDLE H, _In_ POB
     pObKey->dwCellHead = pObKey->oCell + (fActive ? 0x80000000 : 0);
     pObKey->pKey = (PREG_CM_KEY_NODE)((PBYTE)pObKey + sizeof(OB_REGISTRY_KEY));
     CharUtil_UtoW(uszName, -1, (PBYTE)&pObKey->pKey->wszName, 2 * cbuName, NULL, &cbw, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
-	pObKey->pKey->NameLength = cbw ? (WORD)(cbw >> 1) - 1 : 0;
+	pObKey->pKey->NameLength = cbw ? (WORD)(cbw - 2) : 0;
 	// 2: calculate lookup hashes
 	pObKey->qwHashKeyParent = qwKeyParentHash;
 	pObKey->qwHashKeyThis = CharUtil_HashNameFsU(uszName, 0) + ((pObKey->qwHashKeyParent >> 13) | (pObKey->qwHashKeyParent << 51));
@@ -1618,7 +1618,7 @@ POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByOffset(_In_ VMM_HANDLE H, _In_ POB_REG
     cbKeyValue = cbCell - 4;
     pvk = (PREG_CM_KEY_VALUE)(pHive->Snapshot._DUAL[REG_CELL_SV(oCell)].pb + REG_CELL_ORAW(oCell) + 4);
     if(pvk->Signature != REG_CM_KEY_SIGNATURE_KEYVALUE) { return NULL; }
-    if(((QWORD)pvk->NameLength << ((pvk->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME) ? 0 : 1)) > (cbKeyValue - REG_CM_KEY_VALUE_SIZEOF)) { return NULL; }
+    if((pvk->NameLength > cbKeyValue - REG_CM_KEY_VALUE_SIZEOF) || (!(pvk->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME) && (pvk->NameLength & 1))) { return NULL; }
     // 2: allocate and prepare
     pObKeyValue = Ob_AllocEx(H, OB_TAG_REG_KEYVALUE, LMEM_ZEROINIT, sizeof(OB_REGISTRY_VALUE), NULL, NULL);
     if(!pObKeyValue) { return NULL; }
@@ -2026,6 +2026,85 @@ POB_MAP VmmWinReg_KeyList(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_o
 }
 
 /*
+* Copy a counted hive name without file-system substitutions or truncation.
+* NameLength in both nk and vk cells is in bytes, including compressed names.
+* Preserve embedded nulls; pcbName includes the additional terminating null.
+*/
+_Success_(return)
+static BOOL VmmWinReg_NameOriginal(_In_reads_(cbName) PBYTE pbName, _In_ DWORD cbName, _In_ BOOL fCompressed, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbName)
+{
+    static const BYTE pbPrefix[5] = { 0, 0, 0xc0, 0xe0, 0xf0 };
+    DWORD i, j, iPass, cch, cp, cpLow, cbOut, cbChar;
+    *pcbName = 0;
+    if(!fCompressed && (cbName & 1)) { return FALSE; }
+    cch = fCompressed ? cbName : cbName / 2;
+    // Validate and size first, then encode without stopping at embedded nulls.
+    for(iPass = 0; iPass < 2; iPass++) {
+        cbOut = 0;
+        for(i = 0; i < cch; i++) {
+            cp = fCompressed ? pbName[i] : pbName[2 * i] | ((DWORD)pbName[2 * i + 1] << 8);
+            if((cp >= 0xd800) && (cp <= 0xdfff)) {
+                if((cp >= 0xdc00) || (++i == cch)) { return FALSE; }
+                cpLow = pbName[2 * i] | ((DWORD)pbName[2 * i + 1] << 8);
+                if((cpLow < 0xdc00) || (cpLow > 0xdfff)) { return FALSE; }
+                cp = 0x10000 + ((cp - 0xd800) << 10) + (cpLow - 0xdc00);
+            }
+            cbChar = 1 + (cp > 0x7f) + (cp > 0x7ff) + (cp > 0xffff);
+            if(iPass) {
+                for(j = cbChar - 1; j; j--) { pb[cbOut + j] = 0x80 | (cp & 0x3f); cp >>= 6; }
+                pb[cbOut] = (BYTE)cp | pbPrefix[cbChar];
+            }
+            cbOut += cbChar;
+        }
+        if(!iPass) {
+            *pcbName = cbOut + 1;
+            if(!pb) { return TRUE; }
+            if(cb <= cbOut) { return FALSE; }
+        }
+    }
+    pb[cbOut] = 0;
+    return TRUE;
+}
+
+_Success_(return)
+BOOL VmmWinReg_QueryNameOriginal(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPath, _In_ BOOL fValue, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbName)
+{
+    BOOL f = FALSE;
+    CHAR uszPath[MAX_PATH], uszParent[MAX_PATH];
+    LPSTR uszName = NULL;
+    PBYTE pbCell;
+    PREG_CM_KEY_NODE pnk, pnkRoot;
+    POB_REGISTRY_HIVE pObHive = NULL;
+    POB_REGISTRY_KEY pObKey = NULL;
+    POB_REGISTRY_VALUE pObValue = NULL;
+    *pcbName = 0;
+    if(!uszFullPath || !VmmWinReg_PathHiveGetByFullPath(H, uszFullPath, &pObHive, uszPath)) { goto finish; }
+    if(fValue && !(uszName = CharUtil_PathSplitLastEx(uszPath, uszParent, sizeof(uszParent)))) { goto finish; }
+    if(!(pObKey = VmmWinReg_KeyGetByPath(H, pObHive, fValue ? uszParent : uszPath))) { goto finish; }
+    if(fValue) {
+        if(!(pObValue = VmmWinReg_ValueByKeyAndName(H, pObHive, pObKey, uszName))) { goto finish; }
+        f = VmmWinReg_NameOriginal((PBYTE)pObValue->pValue->szName, pObValue->pValue->NameLength,
+            pObValue->pValue->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME, pb, cb, pcbName);
+    } else {
+        pnk = pObKey->pKey;
+        // Use the backing nk cell for synthetic ROOT, when available.
+        if(!pnk->Signature && VmmWinReg_KeyValidateCellSize(pObHive, pObKey->oCell, REG_CM_KEY_NODE_SIZEOF + 4, 0x1000)) {
+            pbCell = pObHive->Snapshot._DUAL[REG_CELL_SV(pObKey->oCell)].pb + REG_CELL_ORAW(pObKey->oCell);
+            pnkRoot = (PREG_CM_KEY_NODE)(pbCell + 4);
+            f = pnkRoot->Signature == REG_CM_KEY_SIGNATURE_KEYNODE;
+            f = f && (pnkRoot->NameLength <= REG_CELL_SIZE(*(PDWORD)pbCell) - 4 - REG_CM_KEY_NODE_SIZEOF);
+            if(f) { pnk = pnkRoot; }
+        }
+        f = VmmWinReg_NameOriginal((PBYTE)pnk->szName, pnk->NameLength, pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME, pb, cb, pcbName);
+    }
+finish:
+    Ob_DECREF(pObValue);
+    Ob_DECREF(pObKey);
+    Ob_DECREF(pObHive);
+    return f;
+}
+
+/*
 * Retrieve information about a registry key.
 * -- pHive
 * -- pKey
@@ -2040,7 +2119,7 @@ VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey,
     if(pKey->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
         pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, sizeof(pKeyInfo->uszName), NULL, pKey->pKey->szName, NULL, pKey->pKey->NameLength, pKey->iSuffix, FALSE);
     } else {
-        pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, sizeof(pKeyInfo->uszName), NULL, NULL, pKey->pKey->wszName, pKey->pKey->NameLength, pKey->iSuffix, FALSE);
+        pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, sizeof(pKeyInfo->uszName), NULL, NULL, pKey->pKey->wszName, pKey->pKey->NameLength / 2, pKey->iSuffix, FALSE);
     }
 }
 
@@ -2182,7 +2261,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
     } else if(pValue->pValue->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME) {
         pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, sizeof(pValueInfo->uszName), NULL, pValue->pValue->szName, NULL, pValue->pValue->NameLength, 0, FALSE);
     } else {
-        pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, sizeof(pValueInfo->uszName), NULL, NULL, pValue->pValue->wszName, pValue->pValue->NameLength, 0, FALSE);
+        pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, sizeof(pValueInfo->uszName), NULL, NULL, pValue->pValue->wszName, pValue->pValue->NameLength / 2, 0, FALSE);
     }
 }
 
@@ -2425,7 +2504,7 @@ BOOL VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
             if(pk->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
                 CharUtil_AtoU(pk->pKey->szName, pk->pKey->NameLength, uszFullPath + o, 1024 - o, NULL, &cbName, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
             } else {
-                CharUtil_WtoU(pk->pKey->wszName, pk->pKey->NameLength, uszFullPath + o, 1024 - o, NULL, &cbName, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
+                CharUtil_WtoU(pk->pKey->wszName, pk->pKey->NameLength / 2, uszFullPath + o, 1024 - o, NULL, &cbName, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
             }
             if(cbName) {
                 o += cbName - 1;

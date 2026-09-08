@@ -217,6 +217,19 @@ POB_MAP VmmWinReg_KeyList(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_o
 VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _Out_ PVMM_REGISTRY_KEY_INFO pKeyInfo);
 
 /*
+* Retrieve the original UTF-8 name of a registry key or value.
+* -- H
+* -- uszFullPath = existing file-system path to the registry key or value.
+* -- fValue = TRUE for a value, FALSE for a key.
+* -- pb = output buffer, or NULL to query the required size.
+* -- cb = size of the output buffer in bytes.
+* -- pcbName = required byte size, including the terminating null.
+* -- return = success. An insufficient buffer fails without truncation.
+*/
+_Success_(return)
+BOOL VmmWinReg_QueryNameOriginal(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPath, _In_ BOOL fValue, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbName);
+
+/*
 * Retrieve information about a registry key - pKeyInfo->wszName = set to full path.
 * -- H
 * -- pHive

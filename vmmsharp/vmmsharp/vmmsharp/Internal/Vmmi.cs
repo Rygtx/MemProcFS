@@ -70,6 +70,7 @@ namespace Vmmsharp.Internal
         internal const string VMMDLL_Map_GetServicesX       = "VMMDLL_Map_GetServicesU";
         internal const string VMMDLL_WinReg_EnumKeyExX      = "VMMDLL_WinReg_EnumKeyExU";
         internal const string VMMDLL_WinReg_EnumValueX      = "VMMDLL_WinReg_EnumValueU";
+        internal const string VMMDLL_WinReg_QueryNameOriginalX = "VMMDLL_WinReg_QueryNameOriginalU";
         internal const string VMMDLL_WinReg_QueryValueExX   = "VMMDLL_WinReg_QueryValueExU";
 #else
         internal const UnmanagedType VmmString              = UnmanagedType.LPWStr;
@@ -98,6 +99,7 @@ namespace Vmmsharp.Internal
         internal const string VMMDLL_Map_GetServicesX       = "VMMDLL_Map_GetServicesW";
         internal const string VMMDLL_WinReg_EnumKeyExX      = "VMMDLL_WinReg_EnumKeyExW";
         internal const string VMMDLL_WinReg_EnumValueX      = "VMMDLL_WinReg_EnumValueW";
+        internal const string VMMDLL_WinReg_QueryNameOriginalX = "VMMDLL_WinReg_QueryNameOriginalW";
         internal const string VMMDLL_WinReg_QueryValueExX   = "VMMDLL_WinReg_QueryValueExW";
 #endif
 
@@ -1443,6 +1445,15 @@ namespace Vmmsharp.Internal
             byte* lpData,
             ref uint lpcbData);
 
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryNameOriginalU")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static unsafe partial bool VMMDLL_WinReg_QueryNameOriginal(
+            IntPtr hVMM,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPath,
+            [MarshalAs(UnmanagedType.Bool)] bool fValue,
+            byte* lpName,
+            ref uint lpcchName);
+
         [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryValueExU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_WinReg_QueryValueEx(
@@ -1960,6 +1971,15 @@ namespace Vmmsharp.Internal
             out uint lpType,
             byte* lpData,
             ref uint lpcbData);
+
+        [DllImport("vmm", EntryPoint = VMMDLL_WinReg_QueryNameOriginalX)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern unsafe bool VMMDLL_WinReg_QueryNameOriginal(
+            IntPtr hVMM,
+            [MarshalAs(VmmString)] string uszFullPath,
+            [MarshalAs(UnmanagedType.Bool)] bool fValue,
+            byte* lpName,
+            ref uint lpcchName);
 
         [DllImport("vmm", EntryPoint = VMMDLL_WinReg_QueryValueExX)]
         internal static extern unsafe bool VMMDLL_WinReg_QueryValueEx(

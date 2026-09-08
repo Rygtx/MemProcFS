@@ -7,6 +7,27 @@
 
 PyObject *g_pPyType_RegKey = NULL;
 
+_Success_(return != NULL)
+PyObject* VmmPycReg_NameOriginal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszPath, _In_ BOOL fValue)
+{
+    BOOL fResult;
+    DWORD cbu = 0;
+    LPSTR usz;
+    PyObject *pyName;
+    if(!pyVMM->fValid) { return PyErr_Format(PyExc_RuntimeError, "Registry.name_original: Not initialized."); }
+    Py_BEGIN_ALLOW_THREADS;
+    fResult = VMMDLL_WinReg_QueryNameOriginalU(pyVMM->hVMM, uszPath, fValue, NULL, &cbu);
+    Py_END_ALLOW_THREADS;
+    if(!fResult || !cbu || !pyVMM->fValid) { return PyErr_Format(PyExc_RuntimeError, "Registry.name_original: Failed."); }
+    if(!(usz = LocalAlloc(0, cbu))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    fResult = VMMDLL_WinReg_QueryNameOriginalU(pyVMM->hVMM, uszPath, fValue, usz, &cbu);
+    Py_END_ALLOW_THREADS;
+    pyName = fResult && cbu && pyVMM->fValid ? PyUnicode_DecodeUTF8(usz, cbu - 1, NULL) : PyErr_Format(PyExc_RuntimeError, "Registry.name_original: Failed.");
+    LocalFree(usz);
+    return pyName;
+}
+
 static BOOL VmmPycRegKey_EnsureLastWrite(PyObj_RegKey *self)
 {
     DWORD cch = 0;
@@ -171,6 +192,14 @@ VmmPycRegKey_name(PyObj_RegKey *self, void *closure)
 }
 
 // -> STR
+_Success_(return != NULL)
+static PyObject* VmmPycRegKey_name_original(_In_ PyObj_RegKey *self, _In_opt_ void *closure)
+{
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.name_original: Not initialized."); }
+    return VmmPycReg_NameOriginal(self->pyVMM, self->uszPath, FALSE);
+}
+
+// -> STR
 static PyObject*
 VmmPycRegKey_path(PyObj_RegKey *self, void *closure)
 {
@@ -236,7 +265,8 @@ BOOL VmmPycRegKey_InitializeType(PyObject *pModule)
         {NULL}
     };
     static PyGetSetDef PyGetSet[] = {
-        {"name", (getter)VmmPycRegKey_name, (setter)NULL, "Key name.", NULL},
+        {"name", (getter)VmmPycRegKey_name, (setter)NULL, "File-system-safe key name.", NULL},
+        {"name_original", (getter)VmmPycRegKey_name_original, (setter)NULL, "Original key name stored in the hive.", NULL},
         {"path", (getter)VmmPycRegKey_path, (setter)NULL, "Key path.", NULL},
         {"parent", (getter)VmmPycRegKey_parent, (setter)NULL, "Parent key.", NULL},
         {"time_int", (getter)VmmPycRegKey_time_int, (setter)NULL, "LastWrite timestamp in numeric format.", NULL},

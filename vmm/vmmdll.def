@@ -119,6 +119,8 @@ EXPORTS
     VMMDLL_WinReg_EnumKeyExW
     VMMDLL_WinReg_EnumValueU
     VMMDLL_WinReg_EnumValueW
+    VMMDLL_WinReg_QueryNameOriginalU
+    VMMDLL_WinReg_QueryNameOriginalW
     VMMDLL_WinReg_QueryValueExU
     VMMDLL_WinReg_QueryValueExW
 

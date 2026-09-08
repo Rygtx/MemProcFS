@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.18.9
+// Header Version: 5.18.10
 //
 
 #include "leechcore.h"
@@ -2843,6 +2843,23 @@ BOOL VMMDLL_WinReg_EnumValueU(
 );
 
 /*
+* Retrieve the original UTF-8 name of a registry key or value.
+* -- uszFullPath = existing file-system path, including the value name if fValue.
+* -- fValue = TRUE for a value, FALSE for a key.
+* -- uszName = output buffer, or NULL to query the required size.
+* -- pcbName = buffer capacity on input.
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_WinReg_QueryNameOriginalU(
+    _In_ VMM_HANDLE hVMM,
+    _In_ LPCSTR uszFullPath,
+    _In_ BOOL fValue,
+    _Out_writes_opt_(*pcbName) LPSTR uszName,
+    _When_(uszName == NULL, _Out_) _When_(uszName != NULL, _Inout_) PDWORD pcbName
+);
+
+/*
 * Query a registry value given a registry key/value path - similar to WINAPI
 * function 'RegQueryValueEx'.
 * Please consult WINAPI function documentation for information.
@@ -2922,6 +2939,23 @@ BOOL VMMDLL_WinReg_EnumValueW(
     _Out_opt_ LPDWORD lpType,
     _Out_writes_opt_(*lpcbData) LPBYTE lpData,
     _Inout_opt_ LPDWORD lpcbData
+);
+
+/*
+* Retrieve the original UTF-16 name of a registry key or value.
+* -- wszFullPath = existing file-system path, including the value name if fValue.
+* -- fValue = TRUE for a value, FALSE for a key.
+* -- wszName = output buffer, or NULL to query the required size.
+* -- pcchName = buffer capacity on input.
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_WinReg_QueryNameOriginalW(
+    _In_ VMM_HANDLE hVMM,
+    _In_ LPCWSTR wszFullPath,
+    _In_ BOOL fValue,
+    _Out_writes_opt_(*pcchName) LPWSTR wszName,
+    _When_(wszName == NULL, _Out_) _When_(wszName != NULL, _Inout_) PDWORD pcchName
 );
 
 /*

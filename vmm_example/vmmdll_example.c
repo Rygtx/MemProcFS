@@ -1416,6 +1416,30 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
+    // Query original names of common Windows registry entries using their mangled paths.
+    // The '*' class key is exposed as '_', and '\DosDevices\C:' as '_DosDevices_C_'.
+    printf("------------------------------------------------------------\n");
+    printf("# Registry: Query original key and value names              \n");
+    ShowKeyPress();
+    // The buffer capacity and returned size are UTF-8 bytes, including the final null.
+    cch = sizeof(usz);
+    printf("CALL:    VMMDLL_WinReg_QueryNameOriginalU (key)\n");
+    result = VMMDLL_WinReg_QueryNameOriginalU(hVMM, "HKLM\\SOFTWARE\\Classes\\_", FALSE, usz, &cch);
+    if(result) {
+        printf("SUCCESS: Key name:   '_' -> '%s'\n", usz);
+    } else {
+        printf("FAIL:    VMMDLL_WinReg_QueryNameOriginalU (key)\n");
+    }
+    cch = sizeof(usz);
+    printf("CALL:    VMMDLL_WinReg_QueryNameOriginalU (value)\n");
+    result = VMMDLL_WinReg_QueryNameOriginalU(hVMM, "HKLM\\SYSTEM\\MountedDevices\\_DosDevices_C_", TRUE, usz, &cch);
+    if(result) {
+        printf("SUCCESS: Value name: '_DosDevices_C_' -> '%s'\n", usz);
+    } else {
+        printf("FAIL:    VMMDLL_WinReg_QueryNameOriginalU (value)\n");
+    }
+
+
     // Retrieve Physical Memory Map
     printf("------------------------------------------------------------\n");
     printf("# Retrieve Physical Memory Map                              \n");

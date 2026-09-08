@@ -269,3 +269,4 @@ Latest:
 * New module: /sys/eventlog (Windows event log recovery).
 * New module: /sys/proc/cpu - process CPU usage, current and total.
 * New API function: VMMDLL_MemVirtualQuery.
+* New API function: VMMDLL_WinReg_QueryNameOriginalU.
